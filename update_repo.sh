@@ -1,14 +1,14 @@
 #! /bin/bash
 
-PACKAGE_DIR="/home/admin/aur_packages"
-SRV_DIR="/srv/http/archlinux/julia-aur/os/x86_64"
-CHROOT="$HOME/chroot"
-REPO_PATH="$SRV_DIR/julia-aur.db.tar.gz"
-REPOS=$(ls $PACKAGE_DIR)
-CHROOT_GENERATED=0
+PACKAGE_DIR="/home/admin/aur_packages" # path to a "downloads" folder containing folders with 'makepkg' files
+SRV_DIR="/srv/http/archlinux/julia-aur/os/x86_64" 
+CHROOT="$HOME/chroot" 
+REPO_PATH="$SRV_DIR/julia-aur.db.tar.gz" # path to pacman database
 
 # dependencies's parent folder in $PACKAGE_DIR should have a NN_filename numeric prefix (i.e 00_spotify)
 # in case there are dependencies in julia-aur
+
+CHROOT_GENERATED=0
 
 # $1 == package name 
 generate_package() {
@@ -19,6 +19,7 @@ generate_package() {
 		CHROOT_GENERATED=1
 	fi
 
+	# check for dependencies being built and stored in julia-aur
 	arch-nspawn $CHROOT/root pacman -Syu
 	
 	cd $PACKAGE_DIR/$1
@@ -34,6 +35,8 @@ generate_package() {
 
 update_package() {
 	cd $PACKAGE_DIR/$1
+	
+	# clean aur folder and check for updates
 	git clean -f
 	git remote update
 
@@ -48,7 +51,6 @@ update_package() {
 			if test -f $file; then
 				echo -e "\t removing $file"
 				rm $file
-				repo-remove $REPO_PATH $file
 			fi
 		done
 
@@ -57,9 +59,9 @@ update_package() {
 	else
 		echo "$1 is up to date"
 		
+		# check for unbuilt packages
 		for file in $PACKAGES; do 
 			if ! test -f $file; then
-			        repo-remove $REPO_PATH $file	
 				echo -e "\t$file does not exist"
 				generate_package $1
 				break
@@ -69,7 +71,7 @@ update_package() {
 }
 
 update_all() {
-	for repo in $REPOS; do
+	for repo in $(ls $PACKAGE_DIR); do
 		update_package $repo
 	done
 
@@ -79,27 +81,30 @@ update_all() {
 	sudo pacman -Syu
 }
 
-# machine needs to be up to date
-sudo pacman -Syu
+main() {
+	# machine needs to be up to date
+	sudo pacman -Syu
 
-if [ -z ${1+x} ]; then
-	update_all
-else
-	if [[ "$1" != "--check" ]]; then
-		update_package $1
+	if [ -z ${1+x} ]; then
+		update_all
+	else
+		if [[ "$1" != "--check" ]]; then
+			update_package $1
+		fi
 	fi
-fi
 
-# required to check julia-aur 
-sudo pacman -Syu
+	# required to check julia-aur 
+	sudo pacman -Syu
 
-echo "left hand side == output of pacman -Sl julia-aur"
-echo "right hand side == packages in $SRV_DIR"
+	echo "left hand side == output of pacman -Sl julia-aur"
+	echo "right hand side == packages in $SRV_DIR"
 
-diff -y <(pacman -Sl julia-aur | cut -d" " -f 2,3 | sort) <(ls $SRV_DIR | grep -v "julia" | rev | cut -d"." -f 1,2,3 --complement | cut -d"-" -f 1 --complement | sed 's/-/ /2' | rev | sort)
+	diff -y <(pacman -Sl julia-aur | cut -d" " -f 2,3 | sort) <(ls $SRV_DIR | grep -v "julia" | rev | cut -d"." -f 1,2,3 --complement | cut -d"-" -f 1 --complement | sed 's/-/ /2' | rev | sort)
 
-echo "left hand side == output of pacman -Sl julia-aur"
-echo "right hand side == folders in $PACKAGE_DIR"
+	echo "left hand side == output of pacman -Sl julia-aur"
+	echo "right hand side == folders in $PACKAGE_DIR"
 
-diff -y <(pacman -Sl julia-aur | cut -d" " -f 2 | sort) <(ls $PACKAGE_DIR | sed 's/[0-9]\+_//g' | sort)
+	diff -y <(pacman -Sl julia-aur | cut -d" " -f 2 | sort) <(ls $PACKAGE_DIR | sed 's/[0-9]\+_//g' | sort)
+}
 
+main $1
